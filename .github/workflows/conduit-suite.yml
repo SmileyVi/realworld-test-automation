@@ -31,6 +31,15 @@ jobs:
           java-version: '27'
           cache: maven
 
+      - name: Configure the Microsoft Edge sandbox
+        if: ${{ inputs.suite == 'ui' && inputs.browser == 'edge' }}
+        shell: bash
+        run: |
+          edge_sandbox=/opt/microsoft/msedge/msedge-sandbox
+          sudo chown root:root "$edge_sandbox"
+          sudo chmod 4755 "$edge_sandbox"
+          stat -c '%U:%G %a %n' "$edge_sandbox"
+
       - name: Start Conduit
         run: docker compose up --build --wait --wait-timeout 120
 
