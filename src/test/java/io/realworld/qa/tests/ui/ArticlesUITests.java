@@ -7,8 +7,8 @@ import io.realworld.qa.config.ConduitEnvironment;
 import io.realworld.qa.config.TestConfig;
 import io.realworld.qa.support.BrowserSession;
 import io.realworld.qa.support.ConduitTest;
-import io.realworld.qa.support.Scenario;
 import io.realworld.qa.support.Scenario.Account;
+import io.realworld.qa.support.TestAccountRole;
 import io.realworld.qa.support.data.ArticleJourneyCase;
 import io.realworld.qa.support.data.JsonTestData;
 import io.realworld.qa.ui.ArticlePage;
@@ -16,6 +16,7 @@ import io.realworld.qa.ui.LoginPage;
 import io.restassured.response.Response;
 import org.apache.http.HttpStatus;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -27,27 +28,28 @@ import java.util.stream.Stream;
 import static com.codeborne.selenide.Condition.exactText;
 import static com.codeborne.selenide.Condition.text;
 import static io.realworld.qa.api.ApiUtils.readArticleFromResponse;
-import static io.realworld.qa.support.Scenario.TEST_USER_ALIAS;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @Tag("ui")
+@Tag("regression")
 class ArticlesUITests extends ConduitTest {
     private static final TestConfig CONFIG = TestConfig.load();
-    private static final String TEST_READER_ALIAS = "testReader";
-    private static Account articleAuthor;
+    private Account articleAuthor;
 
     @RegisterExtension
     final BrowserSession browserSession = new BrowserSession(CONFIG);
 
     @BeforeAll
-    static void prepareArticleAuthor() {
+    static void awaitWeb() {
         ConduitEnvironment.awaitWeb(CONFIG);
-        try (Scenario setup = newScenario(newConduitApi())) {
-            articleAuthor = setup.authenticateConfiguredUser(TEST_USER_ALIAS);
-        }
+    }
+
+    @BeforeEach
+    void registerArticleAuthor() {
+        articleAuthor = scenario.registerTestAccount(TestAccountRole.ARTICLE_AUTHOR);
     }
 
     private static Stream<ArticleJourneyCase> articleJourneys() {
@@ -56,6 +58,7 @@ class ArticlesUITests extends ConduitTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("articleJourneys")
+    @Tag("smoke")
     @DisplayName("A visitor can read an article and see its author")
     void readPublicArticle(ArticleJourneyCase articleCase) {
         PublishedArticleFixture article = publishArticle(articleAuthor, articleCase.draft());
@@ -68,9 +71,9 @@ class ArticlesUITests extends ConduitTest {
     @MethodSource("articleJourneys")
     @DisplayName("A signed-in reader can view an article another user published")
     void signedInReaderCanViewAnotherUsersArticle(ArticleJourneyCase articleCase) {
-        Account articleReader = scenario.authenticateConfiguredUser(TEST_READER_ALIAS);
+        Account articleReader = scenario.registerTestAccount(TestAccountRole.ARTICLE_READER);
         assertNotEquals(articleAuthor.username(), articleReader.username(),
-                "testUser and testReader must refer to different Conduit accounts");
+                "The author and reader must be separate Conduit accounts");
         PublishedArticleFixture article = publishArticle(articleAuthor, articleCase.draft());
 
         LoginPage loginPage = signInAs(articleReader);

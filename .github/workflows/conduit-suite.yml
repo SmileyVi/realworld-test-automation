@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
         with:
           distribution: temurin
-          java-version: '27'
+          java-version: '25'
           cache: maven
 
       - name: Configure the Microsoft Edge sandbox
@@ -49,7 +49,6 @@ jobs:
           if ($env:CONDUIT_SUITE -eq 'ui') {
             $driverPaths = @($env:CHROMEWEBDRIVER, $env:GECKOWEBDRIVER, $env:EDGEWEBDRIVER, $env:PATH)
             $env:PATH = ($driverPaths | Where-Object { $_ }) -join [IO.Path]::PathSeparator
-            & ./scripts/Provision-UiTestUsers.ps1
           }
           $edgeLoggingOptions = @()
           if ($env:CONDUIT_BROWSER -eq 'edge') {

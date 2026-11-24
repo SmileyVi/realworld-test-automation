@@ -5,6 +5,7 @@ import io.realworld.qa.api.model.common.User;
 import io.realworld.qa.api.model.users.request.Credentials;
 import io.realworld.qa.support.ConduitTest;
 import io.realworld.qa.support.Scenario.Account;
+import io.realworld.qa.support.TestAccountRole;
 import io.restassured.response.Response;
 import org.apache.http.HttpStatus;
 import org.junit.jupiter.api.DisplayName;
@@ -23,13 +24,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @Tag("api")
+@Tag("regression")
 class LoginTests extends ConduitTest {
     private final UsersClient usersClient = conduitApi.users();
 
     @Test
+    @Tag("smoke")
     @DisplayName("A registered user can sign in")
     void logInWithValidCredentials() {
-        Account registeredAccount = scenario.registerTestAccount();
+        Account registeredAccount = scenario.registerTestAccount(TestAccountRole.LOGIN_USER);
         Response loginResponse = usersClient.logInUser(registeredAccount.credentials());
         assertEquals(HttpStatus.SC_OK, loginResponse.statusCode(),
                 "POST /users/login should accept the registered credentials");
@@ -42,7 +45,7 @@ class LoginTests extends ConduitTest {
     @MethodSource("invalidLoginPasswords")
     @DisplayName("Invalid passwords are rejected")
     void rejectWrongPassword(String caseName, String invalidPassword) {
-        Account registeredAccount = scenario.registerTestAccount();
+        Account registeredAccount = scenario.registerTestAccount(TestAccountRole.LOGIN_USER);
         Credentials invalidCredentials = new Credentials(registeredAccount.credentials().getEmail(), invalidPassword);
         Response rejectedLoginResponse = usersClient.logInUser(invalidCredentials);
         assertEquals(HttpStatus.SC_UNPROCESSABLE_ENTITY, rejectedLoginResponse.statusCode(),

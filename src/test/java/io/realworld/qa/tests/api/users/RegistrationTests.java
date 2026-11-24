@@ -3,6 +3,7 @@ package io.realworld.qa.tests.api.users;
 import io.realworld.qa.api.model.common.User;
 import io.realworld.qa.api.model.users.request.Registration;
 import io.realworld.qa.support.ConduitTest;
+import io.realworld.qa.support.TestAccountRole;
 import io.restassured.response.Response;
 import org.apache.http.HttpStatus;
 import org.junit.jupiter.api.DisplayName;
@@ -16,11 +17,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @Tag("api")
+@Tag("regression")
 class RegistrationTests extends ConduitTest {
     @Test
+    @Tag("smoke")
     @DisplayName("A new user can register an account")
     void registerNewAccount() {
-        Registration registration = scenario.generateUniqueRegistration();
+        Registration registration = scenario.generateUniqueRegistration(TestAccountRole.NEW_USER);
         Response registrationResponse = conduitApi.users().registerUser(registration);
         assertEquals(HttpStatus.SC_CREATED, registrationResponse.statusCode(),
                 "POST /users should register a new account");

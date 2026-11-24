@@ -6,6 +6,7 @@ import io.realworld.qa.api.model.articles.request.ArticleUpdate;
 import io.realworld.qa.api.model.articles.response.Article;
 import io.realworld.qa.support.ConduitTest;
 import io.realworld.qa.support.Scenario.Account;
+import io.realworld.qa.support.TestAccountRole;
 import io.restassured.response.Response;
 import org.apache.http.HttpStatus;
 import org.junit.jupiter.api.DisplayName;
@@ -20,13 +21,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 @Tag("api")
+@Tag("regression")
 class ArticlesApiTests extends ConduitTest {
     private final ArticlesClient articlesClient = conduitApi.articles();
 
     @Test
     @DisplayName("An author can create, read, update, and delete an article")
     void articleLifecycle() {
-        Account articleAuthor = scenario.articleAuthor();
+        Account articleAuthor = scenario.registerTestAccount(TestAccountRole.ARTICLE_AUTHOR);
         ArticleDraft articleDraft = scenario.generateUniqueArticleDraft();
         Response creationResponse = articlesClient.createNewArticle(articleAuthor.accessToken(), articleDraft);
         assertEquals(HttpStatus.SC_CREATED, creationResponse.statusCode(),
@@ -37,6 +39,7 @@ class ArticlesApiTests extends ConduitTest {
         String articleSlug = createdArticle.getSlug();
         assertThat(articleSlug).as("The created article should have a slug for later requests").isNotBlank();
         scenario.deleteArticleAfterTest(articleAuthor, articleSlug);
+        scenario.recordPublishedArticle(articleAuthor, articleSlug);
         assertAll("Created article content",
                 () -> assertEquals(articleDraft.getTitle(), createdArticle.getTitle(),
                         "The created article title should match the draft"),
@@ -89,8 +92,8 @@ class ArticlesApiTests extends ConduitTest {
     @Test
     @DisplayName("Only the author can delete an article")
     void rejectDeletionByAnotherUser() {
-        Account articleAuthor = scenario.articleAuthor();
-        Account otherAccount = scenario.registerTestAccount();
+        Account articleAuthor = scenario.registerTestAccount(TestAccountRole.ARTICLE_AUTHOR);
+        Account otherAccount = scenario.registerTestAccount(TestAccountRole.NON_AUTHOR);
         Article publishedArticle = scenario.createArticleFixture(articleAuthor, scenario.generateUniqueArticleDraft());
         String articleSlug = publishedArticle.getSlug();
 

@@ -1,5 +1,6 @@
 package io.realworld.qa.support;
 
+import io.qameta.allure.Allure;
 import io.realworld.qa.api.client.ArticlesClient;
 import io.realworld.qa.api.client.UsersClient;
 import io.realworld.qa.api.model.articles.request.ArticleDraft;
@@ -8,75 +9,63 @@ import io.realworld.qa.api.model.common.User;
 import io.realworld.qa.api.model.users.request.Credentials;
 import io.realworld.qa.api.model.users.request.Registration;
 import io.restassured.response.Response;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.http.HttpStatus;
+import org.jspecify.annotations.NonNull;
 
 import java.time.Duration;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static io.realworld.qa.api.ApiUtils.readArticleFromResponse;
 import static io.realworld.qa.api.ApiUtils.readUserFromResponse;
 import static org.awaitility.Awaitility.await;
 
+@Slf4j
 public final class Scenario implements AutoCloseable {
-    public static final String TEST_USER_ALIAS = "testUser";
-
     private final UsersClient usersClient;
     private final ArticlesClient articlesClient;
     private final Duration articleAuthorWait;
-    private final TestUsers testUsers;
+    private final String testName;
+    private final List<String> testData = new ArrayList<>();
     private final Deque<Runnable> pendingCleanupActions = new ArrayDeque<>();
 
-    Scenario(UsersClient usersClient, ArticlesClient articlesClient, Duration articleAuthorWait, TestUsers testUsers) {
+    Scenario(UsersClient usersClient, ArticlesClient articlesClient, Duration articleAuthorWait, String testName) {
         this.usersClient = usersClient;
         this.articlesClient = articlesClient;
         this.articleAuthorWait = articleAuthorWait;
-        this.testUsers = testUsers;
+        this.testName = testName;
     }
 
-    public Registration generateUniqueRegistration() {
+    public Registration generateUniqueRegistration(TestAccountRole accountRole) {
         String username = "qa" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-        return new Registration(username, username + "@example.test", "Qa-" + UUID.randomUUID());
+        String email = username + "@example.test";
+        recordTestData("Account for " + accountRole.label() + ": username=" + username + ", email=" + email);
+        return new Registration(username, email, "Qa-" + UUID.randomUUID());
     }
 
-    public Account registerTestAccount() {
-        Registration registration = generateUniqueRegistration();
+    public Account registerTestAccount(TestAccountRole accountRole) {
+        Registration registration = generateUniqueRegistration(accountRole);
         Response registrationResponse = usersClient.registerUser(registration);
         String operation = "Register account " + registration.getUsername();
         requireResponseStatus(registrationResponse, HttpStatus.SC_CREATED, operation);
         Credentials credentials = new Credentials(registration.getEmail(), registration.getPassword());
-        return readFixtureAccount(registrationResponse, credentials, operation);
+        Account registeredAccount = readFixtureAccount(registrationResponse, credentials, operation);
+        log.info("[{}] Registered {} as {}", testName, accountRole.label(), registeredAccount.username());
+        return registeredAccount;
     }
 
-    public Account articleAuthor() {
-        return findConfiguredTestUser().orElseGet(this::registerTestAccount);
-    }
-
-    public Account authenticateTestAccount() {
-        return findConfiguredTestUser().orElseGet(() ->
-                logInFixtureAccount(registerTestAccount().credentials(), "Log in as generated test user"));
-    }
-
-    public Account authenticateConfiguredUser(String alias) {
-        return logInConfiguredUser(alias, testUsers.requireCredentials(alias));
-    }
-
-    private Optional<Account> findConfiguredTestUser() {
-        return testUsers.findCredentials(TEST_USER_ALIAS)
-                .map(credentials -> logInConfiguredUser(TEST_USER_ALIAS, credentials));
-    }
-
-    private Account logInConfiguredUser(String alias, Credentials credentials) {
-        return logInFixtureAccount(credentials, "Log in as test user '" + alias + "'");
-    }
-
-    private Account logInFixtureAccount(Credentials credentials, String operation) {
+    public Account logInTestAccount(Account account) {
+        Credentials credentials = account.credentials();
+        String operation = "Log in as " + account.username();
         Response loginResponse = usersClient.logInUser(credentials);
         requireResponseStatus(loginResponse, HttpStatus.SC_OK, operation);
-        return readFixtureAccount(loginResponse, credentials, operation);
+        Account loggedInAccount = readFixtureAccount(loginResponse, credentials, operation);
+        log.info("[{}] Logged in through the API as {}", testName, loggedInAccount.username());
+        return loggedInAccount;
     }
 
     public ArticleDraft generateUniqueArticleDraft() {
@@ -97,14 +86,20 @@ public final class Scenario implements AutoCloseable {
             throw new IllegalStateException("Creation returned no slug for article " + articleDraft.getTitle());
         }
         deleteArticleAfterTest(articleAuthor, createdArticle.getSlug());
+        recordPublishedArticle(articleAuthor, createdArticle.getSlug());
         waitForArticleAuthor(articleAuthor, createdArticle.getSlug());
         return createdArticle;
+    }
+
+    public void recordPublishedArticle(Account articleAuthor, String articleSlug) {
+        recordTestData("Published article: slug=" + articleSlug + ", author=" + articleAuthor.username());
     }
 
     public void deleteArticleAfterTest(Account articleAuthor, String articleSlug) {
         pendingCleanupActions.push(() -> {
             Response deletionResponse = articlesClient.deleteArticle(articleAuthor.accessToken(), articleSlug);
             int deletionStatus = deletionResponse.statusCode();
+            log.info("[{}] Article cleanup for {} returned HTTP {}", testName, articleSlug, deletionStatus);
             if (deletionStatus != HttpStatus.SC_OK && deletionStatus != HttpStatus.SC_NO_CONTENT
                     && deletionStatus != HttpStatus.SC_NOT_FOUND) {
                 throw new IllegalStateException("Cleanup could not delete article " + articleSlug
@@ -147,6 +142,17 @@ public final class Scenario implements AutoCloseable {
         return new Account(authenticatedUser.getUsername(), credentials, authenticatedUser.getToken());
     }
 
+    private void recordTestData(String detail) {
+        testData.add(detail);
+        log.info("[{}] {}", testName, detail);
+    }
+
+    void attachTestData() {
+        if (!testData.isEmpty()) {
+            Allure.addAttachment("Test data", "text/plain", testName + "\n" + String.join("\n", testData));
+        }
+    }
+
     @Override
     public void close() {
         IllegalStateException cleanupFailures = new IllegalStateException("Conduit fixture cleanup failed");
@@ -164,7 +170,7 @@ public final class Scenario implements AutoCloseable {
 
     public record Account(String username, Credentials credentials, String accessToken) {
         @Override
-        public String toString() {
+        public @NonNull String toString() {
             return "Account[username=" + username + "]";
         }
     }
