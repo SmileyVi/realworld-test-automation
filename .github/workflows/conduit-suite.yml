@@ -44,7 +44,11 @@ jobs:
           }
           $edgeLoggingOptions = @()
           if ($env:CONDUIT_BROWSER -eq 'edge') {
-            $edgeLoggingOptions = @('-Dselenide.webdriverLogsEnabled=true', '-Dwebdriver.edge.verboseLogging=true')
+            $edgeLoggingOptions = @(
+              '-Dselenide.webdriverLogsEnabled=true'
+              '-Dselenide.reportsFolder=target/edge-webdriver'
+              '-Dwebdriver.edge.verboseLogging=true'
+            )
           }
           mvn --batch-mode --no-transfer-progress "-Dconduit.parallel.workers=$env:CONDUIT_TEST_WORKERS" "-P$env:CONDUIT_SUITE" @edgeLoggingOptions verify
           exit $LASTEXITCODE
@@ -59,6 +63,23 @@ jobs:
           mkdir -p target
           docker compose logs --no-color > target/conduit.log
 
+      - name: Collect Edge startup logs
+        if: ${{ failure() && inputs.browser == 'edge' }}
+        shell: pwsh
+        run: |
+          $driverLogFolder = 'target/edge-webdriver'
+          if (Test-Path -LiteralPath $driverLogFolder) {
+            $startupLogFolder = New-Item -ItemType Directory -Path 'target/edge-startup' -Force
+            foreach ($driverLog in Get-ChildItem -LiteralPath $driverLogFolder -Filter 'webdriver.*.log') {
+              $startupLines = foreach ($line in Get-Content -LiteralPath $driverLog.FullName) {
+                $line
+                # Stop before WebDriver can log commands that use test credentials.
+                if ($line -match '\bRESPONSE InitSession\b') { break }
+              }
+              $startupLines | Set-Content -LiteralPath (Join-Path $startupLogFolder.FullName $driverLog.Name)
+            }
+          }
+
       - name: Upload test evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -68,6 +89,7 @@ jobs:
             target/allure-results/
             target/site/allure-maven-plugin/
             target/failsafe-reports/TEST-*.xml
+            target/edge-startup/webdriver.*.log
             target/conduit.log
           if-no-files-found: warn
           retention-days: 14
