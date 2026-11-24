@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Plain text article",
+    "draft": {
+      "title": "Release notes",
+      "description": "An overview of the latest release",
+      "body": "The release includes improvements to article discovery.",
+      "tagList": [],
+      "expectedRenderedText": "The release includes improvements to article discovery."
+    },
+    "edit": {
+      "description": "An updated overview of the latest release",
+      "body": "The release now includes improvements to article discovery and search.",
+      "expectedRenderedText": "The release now includes improvements to article discovery and search."
+    }
+  },
+  {
+    "name": "Multiline Markdown article",
+    "draft": {
+      "title": "Field notes",
+      "description": "Findings from the field test",
+      "body": "## Field test findings\n\nThe **first** round is complete.",
+      "tagList": [],
+      "expectedRenderedText": "Field test findings The first round is complete."
+    },
+    "edit": {
+      "description": "Revised findings from the field test",
+      "body": "## Revised findings\n\nThe **second** round is complete.",
+      "expectedRenderedText": "Revised findings The second round is complete."
+    }
+  }
+]

@@ -1,0 +1,40 @@
+services:
+  database:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: conduit
+      POSTGRES_USER: conduit
+      POSTGRES_PASSWORD: conduit-local
+    volumes:
+      - conduit-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  conduit:
+    build:
+      context: docker
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: '3001'
+      JWT_KEY: disposable-local-conduit-key
+      PROD_DB_USERNAME: conduit
+      PROD_DB_PASSWORD: conduit-local
+      PROD_DB_NAME: conduit
+      PROD_DB_HOSTNAME: database
+      PROD_DB_DIALECT: postgres
+    ports:
+      - '127.0.0.1:${CONDUIT_PORT:-8080}:3001'
+    healthcheck:
+      test: [CMD, node, -e, 'Promise.all(["/", "/api/tags"].map(path => fetch("http://127.0.0.1:3001" + path))).then(responses => process.exit(responses.every(response => response.ok) ? 0 : 1)).catch(() => process.exit(1))']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  conduit-data:

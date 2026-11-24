@@ -1,0 +1,73 @@
+name: Verify a Conduit test suite
+
+on:
+  workflow_call:
+    inputs:
+      suite:
+        required: true
+        type: string
+      browser:
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CONDUIT_TEST_WORKERS: ${{ vars.CONDUIT_TEST_WORKERS || '2' }}
+      CONDUIT_SUITE: ${{ inputs.suite }}
+      CONDUIT_BROWSER: ${{ inputs.browser }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
+        with:
+          distribution: temurin
+          java-version: '27'
+          cache: maven
+
+      - name: Start Conduit
+        run: docker compose up --build --wait --wait-timeout 120
+
+      - name: Verify test suite
+        shell: pwsh
+        run: |
+          if ($env:CONDUIT_SUITE -eq 'ui') {
+            $driverPaths = @($env:CHROMEWEBDRIVER, $env:GECKOWEBDRIVER, $env:EDGEWEBDRIVER, $env:PATH)
+            $env:PATH = ($driverPaths | Where-Object { $_ }) -join [IO.Path]::PathSeparator
+            & ./scripts/Provision-UiTestUsers.ps1
+          }
+          mvn --batch-mode --no-transfer-progress "-Dconduit.parallel.workers=$env:CONDUIT_TEST_WORKERS" "-P$env:CONDUIT_SUITE" verify
+          exit $LASTEXITCODE
+
+      - name: Generate Allure report
+        if: ${{ !cancelled() && hashFiles('target/allure-results/*-result.json') != '' }}
+        run: mvn --batch-mode --no-transfer-progress allure:report
+
+      - name: Collect Conduit logs
+        if: ${{ failure() }}
+        run: |
+          mkdir -p target
+          docker compose logs --no-color > target/conduit.log
+
+      - name: Upload test evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: conduit-test-evidence-${{ inputs.browser || inputs.suite }}
+          path: |
+            target/allure-results/
+            target/site/allure-maven-plugin/
+            target/failsafe-reports/TEST-*.xml
+            target/conduit.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop Conduit
+        if: ${{ always() }}
+        run: docker compose down -v

@@ -1,0 +1,28 @@
+name: Conduit tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-api:
+    name: API contracts
+    uses: ./.github/workflows/conduit-suite.yml
+    with:
+      suite: api
+
+  verify-ui:
+    name: Browser journeys (${{ matrix.browser }})
+    needs: verify-api
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, firefox, edge]
+    uses: ./.github/workflows/conduit-suite.yml
+    with:
+      suite: ui
+      browser: ${{ matrix.browser }}
