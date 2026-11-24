@@ -42,7 +42,11 @@ jobs:
             $env:PATH = ($driverPaths | Where-Object { $_ }) -join [IO.Path]::PathSeparator
             & ./scripts/Provision-UiTestUsers.ps1
           }
-          mvn --batch-mode --no-transfer-progress "-Dconduit.parallel.workers=$env:CONDUIT_TEST_WORKERS" "-P$env:CONDUIT_SUITE" verify
+          $edgeLoggingOptions = @()
+          if ($env:CONDUIT_BROWSER -eq 'edge') {
+            $edgeLoggingOptions = @('-Dselenide.webdriverLogsEnabled=true', '-Dwebdriver.edge.verboseLogging=true')
+          }
+          mvn --batch-mode --no-transfer-progress "-Dconduit.parallel.workers=$env:CONDUIT_TEST_WORKERS" "-P$env:CONDUIT_SUITE" @edgeLoggingOptions verify
           exit $LASTEXITCODE
 
       - name: Generate Allure report
